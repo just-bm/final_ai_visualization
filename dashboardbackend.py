@@ -98,7 +98,7 @@ def login_required(user: dict = Depends(get_current_user)):
     return user
 
 # Routes
-@app.get("/", response_class=HTMLResponse)
+@app.get("/dashboard", response_class=HTMLResponse)
 async def home(request: Request, user: dict = Depends(login_required)):
     # Verify session again to ensure it's valid
     session_token = request.cookies.get("session_token")
@@ -133,6 +133,17 @@ async def data_page(request: Request, user: dict = Depends(login_required)):
         "request": request,
         "username": user["username"]
     })
+@app.get("/", response_class=HTMLResponse)
+async def landing_page(request: Request):
+    session_token = request.cookies.get("session_token")
+    user = get_user_from_session(session_token) if session_token else None
+    
+    if user:
+        # User is properly authenticated - show dashboard
+        return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+    else:
+        # Show public landing page or redirect to login
+        return templates.TemplateResponse("landing.html", {"request": request})
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request):

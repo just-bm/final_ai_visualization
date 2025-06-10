@@ -1825,28 +1825,38 @@
 
     // Export as PDF
     async function exportCanvasAsPDF() {
-      const dropZone = document.getElementById("dropZone");
+  const dropZone = document.getElementById("dropZone");
+  
+  // Hide elements
+  const deleteButtons = dropZone.querySelectorAll(".delete-btn");
+  const fontSelectors = dropZone.querySelectorAll("select");
+  deleteButtons.forEach(btn => btn.style.display = "none");
+  fontSelectors.forEach(sel => sel.style.display = "none");
 
-      const deleteButtons = dropZone.querySelectorAll(".delete-btn");
-      const fontSelectors = dropZone.querySelectorAll("select");
+  // Ensure dimensions are correct
+  const width = dropZone.offsetWidth;
+  const height = dropZone.offsetHeight;
+  console.log("Exporting with dimensions:", width, height);
 
-      deleteButtons.forEach(btn => btn.style.display = "none");
-      fontSelectors.forEach(sel => sel.style.display = "none");
+  try {
+    const canvas = await html2canvas(dropZone, { 
+      scale: 2,
+      useCORS: true,
+      logging: true // Enable for debugging
+    });
 
-      const originalOverflow = dropZone.style.overflow;
-      dropZone.style.overflow = "visible";
-
-      await html2canvas(dropZone, { scale: 2 }).then(canvas => {
-        const imgData = canvas.toDataURL("image/png");
-        const pdf = new jspdf.jsPDF("p", "pt", [dropZone.offsetWidth, dropZone.offsetHeight]);
-        pdf.addImage(imgData, "PNG", 0, 0, dropZone.offsetWidth, dropZone.offsetHeight);
-        pdf.save("dashboard_canvas.pdf");
-      });
-
-      deleteButtons.forEach(btn => btn.style.display = "block");
-      fontSelectors.forEach(sel => sel.style.display = "inline-block");
-      dropZone.style.overflow = originalOverflow;
-    }
+    const imgData = canvas.toDataURL("image/png");
+    const pdf = new jspdf.jsPDF("p", "pt", [width, height]);
+    pdf.addImage(imgData, "PNG", 0, 0, width, height);
+    pdf.save("dashboard_canvas.pdf");
+  } catch (error) {
+    console.error("Export failed:", error);
+  } finally {
+    // Restore UI
+    deleteButtons.forEach(btn => btn.style.display = "block");
+    fontSelectors.forEach(sel => sel.style.display = "inline-block");
+  }
+}
 
     // Add this to the script section
     document.addEventListener('DOMContentLoaded', function() {
