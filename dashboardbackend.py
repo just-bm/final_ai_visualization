@@ -5,7 +5,7 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 import secrets
 import sqlite3
-from database import pg_connection
+from database import sqlite_connection
 from openai import OpenAI
 import json 
 import pymongo
@@ -53,35 +53,33 @@ def create_session(user_id: int):
     session_token = create_session_token()
     expires_at = datetime.now() + timedelta(minutes=SESSION_EXPIRE_MINUTES)
     
-    with pg_connection() as conn:
-        # Remove any existing sessions for this user
+    with sqlite_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
-        # Create new session
+        cursor.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
         cursor.execute(
-            "INSERT INTO sessions (session_id, user_id, expires_at) VALUES (%s, %s, %s)",
+            "INSERT INTO sessions (session_id, user_id, expires_at) VALUES (?, ?, ?)",
             (session_token, user_id, expires_at.isoformat())
         )
         conn.commit()
-        cursor.close()
     return session_token
 
 def get_user_from_session(session_token: str):
     if not session_token:
         return None
     
-    with pg_connection() as conn:
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    with sqlite_connection() as conn:
+        cursor = conn.cursor()
         cursor.execute(
             "SELECT users.id, users.username FROM sessions "
             "JOIN users ON users.id = sessions.user_id "
-            "WHERE session_id = %s AND expires_at > NOW()",
+            "WHERE session_id = ? AND expires_at > datetime('now')",
             (session_token,)
         )
         session = cursor.fetchone()
-        cursor.close()
-        
-        return dict(session) if session else None
+        if session:
+            return {"id": session[0], "username": session[1]}
+        else:
+            return None
 
 
 # Authentication dependencies
@@ -110,11 +108,10 @@ async def home(request: Request, user: dict = Depends(login_required)):
         return response
     
     # Fetch user email for display
-    with pg_connection() as conn:
+    with sqlite_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT email FROM users WHERE id = %s", (user["id"],))
+        cursor.execute("SELECT email FROM users WHERE id = ?", (user["id"],))
         user_email_row = cursor.fetchone()
-        cursor.close()
     user_email = user_email_row[0] if user_email_row else ""
     
     return templates.TemplateResponse("index.html", {
@@ -143,19 +140,18 @@ async def login_form(request: Request):
 
 @app.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    with pg_connection() as conn:
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cursor.execute("SELECT id, password_hash FROM users WHERE username = %s", (username,))
+    with sqlite_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, password_hash FROM users WHERE username = ?", (username,))
         user = cursor.fetchone()
-        cursor.close()
     
-    if not user or not verify_password(password, user["password_hash"]):
+    if not user or not verify_password(password, user[1]):
         return templates.TemplateResponse("login.html", {
             "request": request,
             "error": "Invalid username or password"
         })
     
-    session_token = create_session(user["id"])
+    session_token = create_session(user[0])
     
     response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(
@@ -174,11 +170,10 @@ async def login(request: Request, username: str = Form(...), password: str = For
 async def logout(request: Request):
     session_token = request.cookies.get("session_token")
     if session_token:
-        with pg_connection() as conn:
+        with sqlite_connection() as conn:
             cursor= conn.cursor()
-            cursor.execute("DELETE FROM sessions WHERE session_id = %s", (session_token,))
+            cursor.execute("DELETE FROM sessions WHERE session_id = ?", (session_token,))
             conn.commit()
-            cursor.close()
     
     response = RedirectResponse("/login", status_code=status.HTTP_302_FOUND)
     response.delete_cookie("session_token")
@@ -196,19 +191,23 @@ from fastapi import Form
 
 @app.get("/profile", response_class=HTMLResponse)
 async def profile_page(request: Request, user: dict = Depends(login_required)):
-    with pg_connection() as conn:
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    with sqlite_connection() as conn:
+        cursor = conn.cursor()
         cursor.execute(
-            "SELECT username, first_name, last_name, email FROM users WHERE id = %s",
+            "SELECT username, first_name, last_name, email FROM users WHERE id = ?",
             (user["id"],)
         )
         user_data = cursor.fetchone()
-        cursor.close()
     if not user_data:
         return RedirectResponse("/login", status_code=303)
     return templates.TemplateResponse("profile.html", {
         "request": request,
-        "user": user_data,
+        "user": {
+            "username": user_data[0],
+            "first_name": user_data[1],
+            "last_name": user_data[2],
+            "email": user_data[3]
+        },
         "username": user["username"]
     })
 
@@ -222,11 +221,11 @@ async def update_profile(
 ):
     error = None
     message = None
-    with pg_connection() as conn:
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    with sqlite_connection() as conn:
+        cursor = conn.cursor()
         # Check if email is unique if changed
         cursor.execute(
-            "SELECT id FROM users WHERE email = %s AND id != %s",
+            "SELECT id FROM users WHERE email = ? AND id != ?",
             (email, user["id"])
         )
         existing = cursor.fetchone()
@@ -237,8 +236,8 @@ async def update_profile(
                 cursor.execute(
                     """
                     UPDATE users
-                    SET first_name = %s, last_name = %s, email = %s
-                    WHERE id = %s
+                    SET first_name = ?, last_name = ?, email = ?
+                    WHERE id = ?
                     """,
                     (first_name, last_name, email, user["id"])
                 )
@@ -249,14 +248,18 @@ async def update_profile(
                 error = f"Failed to update profile: {str(e)}"
         # Fetch updated user data for rendering
         cursor.execute(
-            "SELECT username, first_name, last_name, email FROM users WHERE id = %s",
+            "SELECT username, first_name, last_name, email FROM users WHERE id = ?",
             (user["id"],)
         )
         user_data = cursor.fetchone()
-        cursor.close()
     return templates.TemplateResponse("profile.html", {
         "request": request,
-        "user": user_data,
+        "user": {
+            "username": user_data[0],
+            "first_name": user_data[1],
+            "last_name": user_data[2],
+            "email": user_data[3]
+        },
         "username": user["username"],
         "error": error,
         "message": message
@@ -269,33 +272,32 @@ async def get_user_history(request: Request, user: dict = Depends(login_required
     days = request.query_params.get("days")
     action_type = request.query_params.get("action_type")
 
-    query = "SELECT id, action_type, description, details, created_at FROM user_history WHERE user_id = %s"
+    query = "SELECT id, action_type, description, details, created_at FROM user_history WHERE user_id = ?"
     params = [user_id]
 
     if days and days.isdigit() and int(days) > 0:
-        query += " AND created_at >= NOW() - INTERVAL %s"
-        params.append(f"{days} days")
+        query += " AND created_at >= datetime('now', ?)"
+        params.append(f"-{days} days")
 
     if action_type:
-        query += " AND action_type = %s"
+        query += " AND action_type = ?"
         params.append(action_type)
 
     query += " ORDER BY created_at DESC LIMIT 100"
 
-    with pg_connection() as conn:
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    with sqlite_connection() as conn:
+        cursor = conn.cursor()
         cursor.execute(query, tuple(params))
         rows = cursor.fetchall()
-        cursor.close()
 
     history = []
     for row in rows:
         history.append({
-            "id": row["id"],
-            "action_type": row["action_type"],
-            "description": row["description"],
-            "details": row["details"],
-            "created_at": row["created_at"].isoformat() if row["created_at"] else None
+            "id": row[0],
+            "action_type": row[1],
+            "description": row[2],
+            "details": row[3],
+            "created_at": row[4]
         })
 
     return history
@@ -327,16 +329,15 @@ async def signup(
     hashed_password = get_password_hash(password)
     
     try:
-        with pg_connection() as conn:
+        with sqlite_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO users (first_name, last_name, email, username, password_hash) VALUES (%s, %s, %s, %s, %s)",
+                "INSERT INTO users (first_name, last_name, email, username, password_hash) VALUES (?, ?, ?, ?, ?)",
                 (first_name, last_name, email, username, hashed_password)
             )
             conn.commit()
-            cursor.close()
-    except psycopg2.IntegrityError as e:
-        if 'unique constraint' in str(e).lower() or 'duplicate key' in str(e).lower():
+    except sqlite3.IntegrityError as e:
+        if 'unique constraint' in str(e).lower() or 'unique failed' in str(e).lower():
             error_msg = "Username or email already exists"
             return templates.TemplateResponse("signup.html", {
                 "request": request,
@@ -570,14 +571,13 @@ async def ask_question(request: Request):
                     }
                 }
                 
-                with pg_connection() as history_conn:
+                with sqlite_connection() as history_conn:
                     history_cursor = history_conn.cursor()
                     history_cursor.execute(
-                        "INSERT INTO user_history (user_id, action_type, description, details) VALUES (%s, %s, %s, %s)",
+                        "INSERT INTO user_history (user_id, action_type, description, details) VALUES (?, ?, ?, ?)",
                         (user["id"], "query", question, json.dumps(history_details))
                     )
                     history_conn.commit()
-                    history_cursor.close()
         except Exception as history_exc:
             print(f"Failed to store user history: {history_exc}")
         
@@ -751,30 +751,6 @@ async def transcribe_audio(file: UploadFile = File(...)):
 
 @app.get("/databases")
 async def get_databases():
-    try:
-        # This is a placeholder - you'll need to adapt this to your actual database connection
-        # Import your database connection module
-        import psycopg2
-        
-        # Connect to PostgreSQL server to list databases
-        conn = psycopg2.connect(
-            host="localhost",
-            port="5432",
-            database="postgres",  # Connect to default postgres database
-            user="postgres",      # Use your actual username
-            password="admin"   # Use your actual password
-        )
-        
-        conn.autocommit = True
-        cursor = conn.cursor()
-        
-        # Query to list all databases
-        cursor.execute("SELECT datname FROM pg_database WHERE datistemplate = false;")
-        databases = [{"name": row[0]} for row in cursor.fetchall()]
-        
-        cursor.close()
-        conn.close()
-        
-        return {"success": True, "databases": databases}
-    except Exception as e:
-        return {"success": False, "message": str(e)}
+    # Since SQLite is file-based, listing databases is not applicable
+    # Return a placeholder or empty list
+    return {"success": True, "databases": []}
