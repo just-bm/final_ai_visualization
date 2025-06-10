@@ -554,6 +554,33 @@ async def ask_question(request: Request):
     print(f"Using database connection: {db_type} - {host}:{port}/{database}")
     
     try:
+        # Store user query history with the exact format you want
+        try:
+            user = get_current_user(request)
+            if user:
+                history_details = {
+                    "format": format_type,
+                    "question": question,
+                    "connection": {
+                        "host": host,
+                        "port": port,
+                        "dbType": db_type,
+                        "database": database,
+                        "username": username
+                    }
+                }
+                
+                with pg_connection() as history_conn:
+                    history_cursor = history_conn.cursor()
+                    history_cursor.execute(
+                        "INSERT INTO user_history (user_id, action_type, description, details) VALUES (%s, %s, %s, %s)",
+                        (user["id"], "query", question, json.dumps(history_details))
+                    )
+                    history_conn.commit()
+                    history_cursor.close()
+        except Exception as history_exc:
+            print(f"Failed to store user history: {history_exc}")
+        
         # Get database schema
         schema_description = ""
         
@@ -669,21 +696,6 @@ async def ask_question(request: Request):
             collection = db[collection_name]
             for doc in collection.find().limit(100):
                 results.append(doc)
-        
-        # Store user query history
-        try:
-            user = get_current_user(request)
-            if user:
-                with pg_connection() as history_conn:
-                    history_cursor = history_conn.cursor()
-                    history_cursor.execute(
-                        "INSERT INTO user_history (user_id, action_type, description, details) VALUES (%s, %s, %s, %s)",
-                        (user["id"], "query", question, json.dumps(results))
-                    )
-                    history_conn.commit()
-                    history_cursor.close()
-        except Exception as history_exc:
-            print(f"Failed to store user history: {history_exc}")
         
         # Generate visualization or report
         if format_type == "full ai report":
