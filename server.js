@@ -829,6 +829,6 @@ app.post('/echo', (req, res) => {
 
 // Start the server
 app.listen(port, () => {
-    console.log(`Server running at http://localhost:${port}`);
+    console.log(`Server running at https://dbbx6q53witp28-${port}.proxy.runpod.net/`);
     console.log(`Supported databases: PostgreSQL, MySQL, MongoDB`);
 });
