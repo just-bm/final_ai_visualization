@@ -26,7 +26,7 @@ import mysql.connector as mysql
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://dbbx6q53witp28-8000.proxy.runpod.net/"],  # Replace "*" with specific URLs to limit access
+    allow_origins=["*"],  # Replace "*" with specific URLs to limit access
     allow_credentials=True,
     allow_methods=["*"],  # Allow all methods (GET, POST, OPTIONS, etc.)
     allow_headers=["*"],  # Allow all headers
