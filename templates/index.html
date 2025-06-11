@@ -1249,7 +1249,7 @@
         console.log("Sending query with connection:", window.selectedDatabaseConnection);
         console.log("Question:", question, "Format:", format);
         
-        const res = await fetch("https://dbbx6q53witp28-8000.proxy.runpod.net/ask", {
+        const res = await fetch("https://dbbx6q53witp28-8000.proxy.runpod.net", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ 
