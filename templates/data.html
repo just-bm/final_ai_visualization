@@ -1018,7 +1018,7 @@
             showStatus('Testing connection...', 'loading');
 
             try {
-                const response = await fetch('http://localhost:3000/api/test-connection', {
+                const response = await fetch('https://05znwjn3jo3e2x-8000.proxy.runpod.net/api/test-connection', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1066,7 +1066,7 @@
 
             showStatus('Saving connection...', 'loading');
             
-            const apiBaseUrl = 'http://localhost:3000/api';
+            const apiBaseUrl = 'https://05znwjn3jo3e2x-8000.proxy.runpod.net/api';
 
             try {
                 // First test the connection to make sure it works
@@ -1166,7 +1166,7 @@
             console.log('Testing echo endpoint...');
             
             // Make sure this URL points to your server
-            fetch('http://localhost:3000/api/echo', {
+            fetch('https://05znwjn3jo3e2x-8000.proxy.runpod.net/api/echo', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1195,7 +1195,7 @@
 
             showStatus('Refreshing databases...', 'loading');
 
-            fetch('http://localhost:3000/api/databases', {
+            fetch('https://05znwjn3jo3e2x-8000.proxy.runpod.net/api/databases', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1314,7 +1314,7 @@
 
             showStatus(`Fetching tables for ${dbName}...`, 'loading');
 
-            fetch('http://localhost:3000/api/tables', {
+            fetch('https://05znwjn3jo3e2x-8000.proxy.runpod.net/api/tables', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1453,7 +1453,7 @@
             console.log('Database:', currentDatabase);
             console.log('Table:', currentTable);
 
-            fetch('http://localhost:3000/api/table-data', {
+            fetch('https://05znwjn3jo3e2x-8000.proxy.runpod.net/api/table-data', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
